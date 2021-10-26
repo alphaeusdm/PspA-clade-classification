@@ -13,12 +13,18 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn import svm
 from sklearn.metrics import accuracy_score, f1_score
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 warnings.filterwarnings("ignore")
 
+number_of_clades = 1
 embeddings = {}
-vectors = pd.read_csv('protvec/vector_embeddings_all.txt', sep=' ', skiprows=1, header=None).values
-for i, vec in enumerate(vectors):
-    embeddings[vec[0]] = np.array(vec[1:])
+def read_embeddings(filename):
+    'protvec/vector_embeddings_all.txt'
+    vectors = pd.read_csv(filename, sep=' ', skiprows=1, header=None).values
+    global embeddings
+    embeddings = {}
+    for i, vec in enumerate(vectors):
+        embeddings[vec[0]] = np.array(vec[1:])
 
 
 def seq_to_vectors(data):
@@ -69,18 +75,18 @@ def seq_to_vec(sequence):
 
 
 
-mean_vectors_train = []
-norms_mean_vectors_train = []
-covariance_matrices_train = []
-norms_covariance_matrices_train = []
+# mean_vectors_train = []
+# norms_mean_vectors_train = []
+# covariance_matrices_train = []
+# norms_covariance_matrices_train = []
 def build_kernal_matrix(train_matrices, test_matrices, k, alpha, run_test=False):
     # build kernel matrices(feature matrices).
     # based on the paper 'Machine learning predicts nucleosome binding modes of transcription factors'.
 
-    # mean_vectors_train = []
-    # norms_mean_vectors_train = []
-    # covariance_matrices_train = []
-    # norms_covariance_matrices_train = []
+    mean_vectors_train = []
+    norms_mean_vectors_train = []
+    covariance_matrices_train = []
+    norms_covariance_matrices_train = []
     for matrix in train_matrices:
         if matrix.shape[0] == 1:
             M = np.sum(matrix, axis=0) / float(matrix.shape[0])
@@ -155,45 +161,45 @@ def build_kernal_matrix(train_matrices, test_matrices, k, alpha, run_test=False)
     return kernel_matrix_train, kernel_matrix_test
 
 
-def build_matrix(seq, k, alpha):
-    # build kernel matrix for new sequence
-    mean_vectors = []
-    norms_mean_vectors = []
-    covariance_matrices = []
-    norms_covariance_matrices = []
-    kernel_matrix = np.zeros((1, train_len))
-    seq = seq.astype(float)
-    if seq.shape[0] == 1:
-        M = np.sum(seq, axis=0) / float(seq.shape[0])
-        C = np.outer(M, M).flatten()
-        mean_vectors.append(M)
-        norms_mean_vectors.append(np.linalg.norm(M))
-        covariance_matrices.append(C)
-        norms_covariance_matrices.append(np.linalg.norm(C))
-    elif seq.shape[0] > 0:
-        M = np.sum(seq, axis=0) / float(seq.shape[0])
-        C = np.cov(seq, rowvar=False).flatten()
-        mean_vectors.append(M)
-        norms_mean_vectors.append(np.linalg.norm(M))
-        covariance_matrices.append(C)
-        norms_covariance_matrices.append(np.linalg.norm(C))
-    else:
-        M = np.zeros(k)
-        C = np.zeros((k, k)).flatten()
-        mean_vectors.append(M)
-        norms_mean_vectors.append(1)
-        covariance_matrices.append(C)
-        norms_covariance_matrices.append(1)
-
-    for i in range(1):
-        for j in range(train_len):
-            kernel_matrix[i, j] = alpha * (np.dot(mean_vectors[i], mean_vectors_train[j]) / (
-                    norms_mean_vectors[i] * norms_mean_vectors_train[j])) + (1 - alpha) * (
-                                               np.dot(covariance_matrices[i],
-                                                      covariance_matrices_train[j]) / (
-                                                       norms_covariance_matrices[i] *
-                                                       norms_covariance_matrices_train[j]))
-    return kernel_matrix
+# def build_matrix(seq, k, alpha):
+#     # build kernel matrix for new sequence
+#     mean_vectors = []
+#     norms_mean_vectors = []
+#     covariance_matrices = []
+#     norms_covariance_matrices = []
+#     kernel_matrix = np.zeros((1, train_len))
+#     seq = seq.astype(float)
+#     if seq.shape[0] == 1:
+#         M = np.sum(seq, axis=0) / float(seq.shape[0])
+#         C = np.outer(M, M).flatten()
+#         mean_vectors.append(M)
+#         norms_mean_vectors.append(np.linalg.norm(M))
+#         covariance_matrices.append(C)
+#         norms_covariance_matrices.append(np.linalg.norm(C))
+#     elif seq.shape[0] > 0:
+#         M = np.sum(seq, axis=0) / float(seq.shape[0])
+#         C = np.cov(seq, rowvar=False).flatten()
+#         mean_vectors.append(M)
+#         norms_mean_vectors.append(np.linalg.norm(M))
+#         covariance_matrices.append(C)
+#         norms_covariance_matrices.append(np.linalg.norm(C))
+#     else:
+#         M = np.zeros(k)
+#         C = np.zeros((k, k)).flatten()
+#         mean_vectors.append(M)
+#         norms_mean_vectors.append(1)
+#         covariance_matrices.append(C)
+#         norms_covariance_matrices.append(1)
+#
+#     for i in range(1):
+#         for j in range(train_len):
+#             kernel_matrix[i, j] = alpha * (np.dot(mean_vectors[i], mean_vectors_train[j]) / (
+#                     norms_mean_vectors[i] * norms_mean_vectors_train[j])) + (1 - alpha) * (
+#                                                np.dot(covariance_matrices[i],
+#                                                       covariance_matrices_train[j]) / (
+#                                                        norms_covariance_matrices[i] *
+#                                                        norms_covariance_matrices_train[j]))
+#     return kernel_matrix
 
 
 
@@ -246,7 +252,7 @@ def real_AUPR(label, score):
 
 def evaluate_performance(y_test, y_score, y_pred, alpha):
     # evaluation
-    n_classes = 6
+    n_classes = number_of_clades
     perf = dict()
 
     # Compute macro-averaged AUPR
@@ -271,128 +277,187 @@ def evaluate_performance(y_test, y_score, y_pred, alpha):
     perf["F1"] = f1_score(y_test, y_pred, average='micro')
     return perf
 
-# read data file and get embeddings of sequences
-data = pd.read_csv('data.csv', usecols=['sequence', 'clade'])
-# data = data.loc[0:308]
 
-# get number of clades
-number_of_clades = 1
-for clade in data['clade']:
-    if clade > number_of_clades:
-        number_of_clades = clade
-data = seq_to_vectors(data)
+fig1, ax1 = plt.subplots(3, 2)
+fig1.suptitle('macro_aupr')
+fig2, ax2 = plt.subplots(3, 2)
+fig2.suptitle('accuracy')
+fig3, ax3 = plt.subplots(3, 2)
+fig3.suptitle('f1')
+row = 0
+col = 0
 
-# split data in train test set
-train_set, test_set = train_test_split(data, shuffle=True, test_size=0.15, train_size=0.85)
-x_train, y_train = train_set['seq_emb'], np.array(train_set['clade'].astype(int))
-x_test, y_test = test_set['seq_emb'], np.array(test_set['clade'].astype(int))
+def train(datafile):
+    # read data file and get embeddings of sequences
+    'data.csv'
+    data = pd.read_csv(datafile, usecols=['sequence', 'clade'])
+    # data = data.loc[0:308]
 
-train_len = len(x_train)
+    # get number of clades
 
-# convert labels to proper format for training if y =4 than [0,0,0,1,0,0]
-y_temp = np.zeros((len(y_train), 6), dtype=int)
-for index in range(len(y_train)):
-    temp = y_temp[index]
-    temp[y_train[index]-1] = 1
-    y_temp[index] = temp
-y_train = y_temp
+    global number_of_clades
+    for clade in data['clade']:
+        if clade > number_of_clades:
+            number_of_clades = clade
+    data = seq_to_vectors(data)
 
-y_temp = np.zeros((len(y_test), 6), dtype=int)
-for index in range(len(y_test)):
-    temp = y_temp[index]
-    temp[y_test[index]-1] = 1
-    y_temp[index] = temp
-y_test = y_temp
+    # split data in train test set
+    train_set, test_set = train_test_split(data, shuffle=True, test_size=0.15, train_size=0.85)
+    x_train, y_train = train_set['seq_emb'], np.array(train_set['clade'].astype(int))
+    x_test, y_test = test_set['seq_emb'], np.array(test_set['clade'].astype(int))
 
-classes = []
-for i in range(1,number_of_clades+1):
-    classes.append(i)
+    global train_len
+    train_len = len(x_train)
 
-# select the configured binding modes
-selected_classes = np.arange(6)
-classes = list(map(classes.__getitem__, selected_classes))
-y_train = y_train[:, selected_classes]
-num_classes = len(classes)
-y_train_temp = y_train
+    # convert labels to proper format for training if y =4 than [0,0,0,1,0,0]
+    y_temp = np.zeros((len(y_train), number_of_clades), dtype=int)
+    for index in range(len(y_train)):
+        temp = y_temp[index]
+        temp[y_train[index]-1] = 1
+        y_temp[index] = temp
+    y_train = y_temp
 
-# for x in x_train:
+    y_temp = np.zeros((len(y_test), number_of_clades), dtype=int)
+    for index in range(len(y_test)):
+        temp = y_temp[index]
+        temp[y_test[index]-1] = 1
+        y_temp[index] = temp
+    y_test = y_temp
 
-x_train = create_matrices(x_train)
-x_train_temp = x_train
-x_test = create_matrices(x_test)
+    classes = []
+    for i in range(1,number_of_clades+1):
+        classes.append(i)
 
-model = None
+    # select the configured binding modes
+    selected_classes = np.arange(number_of_clades)
+    classes = list(map(classes.__getitem__, selected_classes))
+    y_train = y_train[:, selected_classes]
+    num_classes = len(classes)
+    y_train_temp = y_train
 
-best_alpha = 0
-max_micro_aupr = 0
-max_acc = 0
-c_penalty = 10
+    # for x in x_train:
 
-# start training here
-for alpha in tqdm(range(0, 11, 1)):
-    f_macro_aupr = []
-    f_micro_aupr = []
-    f_acc = []
-    f_f1 = []
+    x_train = create_matrices(x_train)
+    x_train_temp = x_train
+    x_test = create_matrices(x_test)
 
-    X_train, X_test = build_kernal_matrix(x_train, x_test, 100, alpha/10)
-    # X_train = x_tra
-    y_labels = y_train
-    for seed in range(10):
-        macro_aupr = []
-        micro_aupr = []
-        acc = []
-        f1 = []
-        counter = 1
-        splits = ml_split(y_labels, num_splits=10, seed=seed)
+    model = None
 
-        for train, valid in splits:
-            x_train = np.nan_to_num(X_train[train, :][:, train])
-            x_valid = np.nan_to_num(X_train[valid, :][:, train])
-
-            y_train = y_labels[train.astype(int)]
-            y_val = y_labels[valid.astype(int)]
-
-            model = RandomForestClassifier()
-            # model = OneVsRestClassifier(svm.SVC(C=c_penalty, kernel='precomputed', random_state=42, probability=True), n_jobs=-1)
-            model.fit(x_train, y_train)
-
-            y_score_valid = model.predict_proba(x_valid)
-            y_pred_valid = model.predict(x_valid)
-            y_score_valid = np.array(y_score_valid)
-            result = evaluate_performance(y_val, y_score_valid, np.array(y_pred_valid), 3)
-            # result = evaluate_performance(y_val, np.array(y_pred_valid), 3)
+    best_alpha = 0
+    max_micro_aupr = 0
+    max_acc = 0
+    c_penalty = 10
 
 
-            # micro_aupr.append(result['m-aupr'])
-            macro_aupr.append(result['M-aupr'])
-            f1.append(result['F1'])
-            acc.append(result['acc'])
-            counter += 1
+    macro_aupr_mean = []
+    micro_aupr_mean = []
+    acc_mean = []
+    f1_mean = []
+    alphas = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
-        # f_micro_aupr.append(round(np.mean(micro_aupr), 3))
-        f_macro_aupr.append(round(np.mean(macro_aupr), 3))
-        f_f1.append(round(np.mean(f1), 3))
-        f_acc.append(round(np.mean(acc), 3))
+    # start training here
+    for alpha in tqdm(range(0, 5, 1)):
+        f_macro_aupr = []
+        f_micro_aupr = []
+        f_acc = []
+        f_f1 = []
 
-    # choose alpha based on macro-AUPR
-    if max_micro_aupr <= round(np.mean(f_macro_aupr), 3) and max_acc <= round(np.mean(f_acc), 3):
-        max_micro_aupr = round(np.mean(f_macro_aupr), 3)
-        max_acc = round(np.mean(f_acc), 3)
-        best_alpha = alpha / 10
+        X_train, X_test = build_kernal_matrix(x_train, x_test, 100, alpha/10)
+        # X_train = x_tra
+        y_labels = y_train
+        for seed in range(10):
+            macro_aupr = []
+            micro_aupr = []
+            acc = []
+            f1 = []
+            counter = 1
+            splits = ml_split(y_labels, num_splits=10, seed=seed)
+
+            for train, valid in splits:
+                x_train = np.nan_to_num(X_train[train, :][:, train])
+                x_valid = np.nan_to_num(X_train[valid, :][:, train])
+
+                y_train = y_labels[train.astype(int)]
+                y_val = y_labels[valid.astype(int)]
+
+                model = RandomForestClassifier()
+                # model = OneVsRestClassifier(svm.SVC(C=c_penalty, kernel='precomputed', random_state=42, probability=True), n_jobs=-1)
+                model.fit(x_train, y_train)
+
+                y_score_valid = model.predict_proba(x_valid)
+                y_pred_valid = model.predict(x_valid)
+                y_score_valid = np.array(y_score_valid)
+                result = evaluate_performance(y_val, y_score_valid, np.array(y_pred_valid), 3)
+                # result = evaluate_performance(y_val, np.array(y_pred_valid), 3)
 
 
-x_train = x_train_temp
-y_train = y_train_temp
-x_train, x_test = build_kernal_matrix(x_train, x_test, 100, best_alpha, True)
+                # micro_aupr.append(result['m-aupr'])
+                macro_aupr.append(result['M-aupr'])
+                f1.append(result['F1'])
+                acc.append(result['acc'])
+                counter += 1
+
+            # f_micro_aupr.append(round(np.mean(micro_aupr), 3))
+            f_macro_aupr.append(round(np.mean(macro_aupr), 3))
+            f_f1.append(round(np.mean(f1), 3))
+            f_acc.append(round(np.mean(acc), 3))
+
+        # choose alpha based on macro-AUPR
+        # micro_aupr_mean.append(round(np.mean(f_micro_aupr), 3))
+        macro_aupr_mean.append(round(np.mean(f_macro_aupr), 3))
+        acc_mean.append(round(np.mean(f_acc), 3))
+        f1_mean.append(round(np.mean(f_f1), 3))
+        if max_micro_aupr <= round(np.mean(f_macro_aupr), 3) and max_acc <= round(np.mean(f_acc), 3):
+            max_micro_aupr = round(np.mean(f_macro_aupr), 3)
+            max_acc = round(np.mean(f_acc), 3)
+            best_alpha = alpha / 10
+
+    # global row
+    # global col
+    # ax1[row, col].plot(alphas, macro_aupr_mean, marker='o')
+    # ax1[row, col].set_title(datafile[:-4])
+    # ax2[row, col].plot(alphas, acc_mean, marker='o')
+    # ax2[row, col].set_title(datafile[:-4])
+    # ax3[row, col].plot(alphas, f1_mean, marker='o')
+    # ax3[row, col].set_title(datafile[:-4])
+    # col += 1
+    # if col == 2:
+    #     row += 1
+    #     col = 0
+    print(micro_aupr_mean)
+    print(macro_aupr_mean)
+    print(acc_mean)
+    print(f1_mean)
+    print(best_alpha)
+
+    x_train = x_train_temp
+    y_train = y_train_temp
+    x_train, x_test = build_kernal_matrix(x_train, x_test, 100, best_alpha, True)
 
 
-model = RandomForestClassifier()
-# model = OneVsRestClassifier(svm.SVC(C=c_penalty, kernel='precomputed', random_state=42, probability=True), n_jobs=-1)
-model.fit(x_train, y_train)
+    model = RandomForestClassifier()
+    # model = OneVsRestClassifier(svm.SVC(C=c_penalty, kernel='precomputed', random_state=42, probability=True), n_jobs=-1)
+    model.fit(x_train, y_train)
 
-y_pred = model.predict(x_test)
-print('accuracy: ', f1_score(y_test, y_pred, average='micro'))
+    y_pred = model.predict(x_test)
+    print('f1-score is: ', f1_score(y_test, y_pred, average='micro'))
 
 
+
+def main():
+    embedding_file = ['protvec/vector_embeddings_europe.txt']#, 'protvec/vector_embeddings_alpha_helical.txt', 'protvec/vector_embeddings_choline_binding.txt', 'protvec/vector_embeddings_proline_rich.txt', 'protvec/vector_embeddings_whole.txt', 'protvec/vector_embeddings_all.txt']
+    data_file = ['europe.csv']#, 'alpha_helical.csv', 'choline_binding.csv', 'proline_rich.csv', 'whole_europe.csv', 'data.csv']
+    # embedding_file = ['protvec/vector_embeddings_europe.txt', 'protvec/vector_embeddings_alpha_helical.txt']
+    # data_file = ['europe.csv', 'alpha_helical.csv']
+    global len_data
+    len_data = len(data_file)/2
+    for i in range(len(data_file)):
+        read_embeddings(embedding_file[i])
+        train(data_file[i])
+    # plt.show()
+
+
+
+if __name__ == '__main__':
+    main()
 
