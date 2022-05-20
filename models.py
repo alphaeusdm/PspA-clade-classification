@@ -1,25 +1,19 @@
-import math
-import warnings
-
-# import prettytable as PrettyTable
-from sklearn.datasets import make_blobs
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold, train_test_split
-from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
-from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
+import seaborn as sns
 from sklearn import svm
-from sklearn.metrics import accuracy_score, f1_score
+import pickle
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, plot_confusion_matrix
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-warnings.filterwarnings("ignore")
 
 number_of_clades = 1
 embeddings = {}
 def read_embeddings(filename):
-    'protvec/vector_embeddings_all.txt'
+    # 'protvec/vector_embeddings_all.txt'
     vectors = pd.read_csv(filename, sep=' ', skiprows=1, header=None).values
     global embeddings
     embeddings = {}
@@ -29,9 +23,9 @@ def read_embeddings(filename):
 
 def seq_to_vectors(data):
     # load embeddings from the vector file
-    vectors = pd.read_csv('protvec/vector_embeddings_all.txt', sep=' ', skiprows=1, header=None).values
-    for i, vec in enumerate(vectors):
-        embeddings[vec[0]] = np.array(vec[1:])
+    # vectors = pd.read_csv('protvec/vector_embeddings_all.txt', sep=' ', skiprows=1, header=None).values
+    # for i, vec in enumerate(vectors):
+    #     embeddings[vec[0]] = np.array(vec[1:])
 
     # convert sequences to vectors
     df = pd.DataFrame(columns=['seq_emb', 'clade'])
@@ -60,7 +54,6 @@ def seq_to_vec(sequence):
     tokens = [token for token in seq.split(" ") if token != ""]
     ngrams = zip(*[tokens[i:] for i in range(3)])
     ngrams = ["".join(ngram) for ngram in ngrams]
-    print(ngrams)
     embs = []
     for ngram in ngrams:
         # print(ngram, embeddings.get(ngram))
@@ -70,19 +63,16 @@ def seq_to_vec(sequence):
                 embs.append(emb)
         else:
             continue
+    # print(embs)
     return embs
     # return np.vstack(embs)
 
 
-
-# mean_vectors_train = []
-# norms_mean_vectors_train = []
-# covariance_matrices_train = []
-# norms_covariance_matrices_train = []
 def build_kernal_matrix(train_matrices, test_matrices, k, alpha, run_test=False):
     # build kernel matrices(feature matrices).
     # based on the paper 'Machine learning predicts nucleosome binding modes of transcription factors'.
 
+    vectors = {}
     mean_vectors_train = []
     norms_mean_vectors_train = []
     covariance_matrices_train = []
@@ -122,6 +112,7 @@ def build_kernal_matrix(train_matrices, test_matrices, k, alpha, run_test=False)
             kernel_matrix_train[j, i] = kernel_matrix_train[i, j]
 
     kernel_matrix_test = np.zeros((len(test_matrices), len(train_matrices)))
+
     if run_test:
         mean_vectors_test = []
         norms_mean_vectors_test = []
@@ -158,49 +149,12 @@ def build_kernal_matrix(train_matrices, test_matrices, k, alpha, run_test=False)
                                                               covariance_matrices_train[j]) / (
                                                                    norms_covariance_matrices_test[i] *
                                                                    norms_covariance_matrices_train[j]))
-    return kernel_matrix_train, kernel_matrix_test
 
-
-# def build_matrix(seq, k, alpha):
-#     # build kernel matrix for new sequence
-#     mean_vectors = []
-#     norms_mean_vectors = []
-#     covariance_matrices = []
-#     norms_covariance_matrices = []
-#     kernel_matrix = np.zeros((1, train_len))
-#     seq = seq.astype(float)
-#     if seq.shape[0] == 1:
-#         M = np.sum(seq, axis=0) / float(seq.shape[0])
-#         C = np.outer(M, M).flatten()
-#         mean_vectors.append(M)
-#         norms_mean_vectors.append(np.linalg.norm(M))
-#         covariance_matrices.append(C)
-#         norms_covariance_matrices.append(np.linalg.norm(C))
-#     elif seq.shape[0] > 0:
-#         M = np.sum(seq, axis=0) / float(seq.shape[0])
-#         C = np.cov(seq, rowvar=False).flatten()
-#         mean_vectors.append(M)
-#         norms_mean_vectors.append(np.linalg.norm(M))
-#         covariance_matrices.append(C)
-#         norms_covariance_matrices.append(np.linalg.norm(C))
-#     else:
-#         M = np.zeros(k)
-#         C = np.zeros((k, k)).flatten()
-#         mean_vectors.append(M)
-#         norms_mean_vectors.append(1)
-#         covariance_matrices.append(C)
-#         norms_covariance_matrices.append(1)
-#
-#     for i in range(1):
-#         for j in range(train_len):
-#             kernel_matrix[i, j] = alpha * (np.dot(mean_vectors[i], mean_vectors_train[j]) / (
-#                     norms_mean_vectors[i] * norms_mean_vectors_train[j])) + (1 - alpha) * (
-#                                                np.dot(covariance_matrices[i],
-#                                                       covariance_matrices_train[j]) / (
-#                                                        norms_covariance_matrices[i] *
-#                                                        norms_covariance_matrices_train[j]))
-#     return kernel_matrix
-
+    vectors['mean_vectors_train'] = mean_vectors_train
+    vectors['norms_mean_vectors_train'] = norms_mean_vectors_train
+    vectors['covariance_matrices_train'] = covariance_matrices_train
+    vectors['norms_covariance_matrices_train'] = norms_covariance_matrices_train
+    return kernel_matrix_train, kernel_matrix_test, vectors
 
 
 def create_matrices(emb):
@@ -230,7 +184,7 @@ def real_AUPR(label, score):
     label = label[order]
 
     P = np.count_nonzero(label)
-    # N = len(label) - P
+    N = len(label) - P
 
     TP = np.cumsum(label, dtype=float)
     PP = np.arange(1, len(label)+1, dtype=float)  # python
@@ -247,7 +201,7 @@ def real_AUPR(label, score):
     else:
         f = 0.0
 
-    return pr, f
+    return pr, f, y, x
 
 
 def evaluate_performance(y_test, y_score, y_pred, alpha):
@@ -259,16 +213,22 @@ def evaluate_performance(y_test, y_score, y_pred, alpha):
     perf["M-aupr"] = 0.0
     n = 0
     for i in range(n_classes):
-        perf[i], _ = real_AUPR(y_test[:, i], y_score[:, i])
+        perf[i], _, _, _ = real_AUPR(y_test[:, i], y_score[:, i])
         if sum(y_test[:, i]) > 0:
             n += 1
             perf["M-aupr"] += perf[i]
     if n == 0:
         n = 1
     perf["M-aupr"] /= n
+
+    # p, r, f, s = precision_recall_fscore_support(y_test, y_pred, average="macro")
+    # print(np.trapz([p], [r]))
+    # perf["M-aupr"] = np.trapz(np.asarray([p]), np.asarray([r]))
+    # print(perf["M-aupr"])
+
     # Compute micro-averaged AUPR
-    # pr, _ = real_AUPR(y_test, y_score)
-    # perf["m-aupr"] = pr if pr == pr else 0
+    pr, _, _, _ = real_AUPR(y_test, y_score)
+    perf["m-aupr"] = pr if pr == pr else 0
 
     # Computes accuracy
     perf['acc'] = accuracy_score(y_test, y_pred)
@@ -278,20 +238,12 @@ def evaluate_performance(y_test, y_score, y_pred, alpha):
     return perf
 
 
-fig1, ax1 = plt.subplots(3, 2)
-fig1.suptitle('macro_aupr')
-fig2, ax2 = plt.subplots(3, 2)
-fig2.suptitle('accuracy')
-fig3, ax3 = plt.subplots(3, 2)
-fig3.suptitle('f1')
-row = 0
-col = 0
-
-def train(datafile):
+def train(datafile, row, col, axes, fig):
     # read data file and get embeddings of sequences
-    'data.csv'
+    # 'data.csv'
     data = pd.read_csv(datafile, usecols=['sequence', 'clade'])
-    # data = data.loc[0:308]
+
+    # data_val = pd.read_csv('../hollingshed.csv', usecols=['sequence', 'clade'])
 
     # get number of clades
 
@@ -300,13 +252,16 @@ def train(datafile):
         if clade > number_of_clades:
             number_of_clades = clade
     data = seq_to_vectors(data)
+    # data_val = seq_to_vectors(data_val)
 
     # split data in train test set
     train_set, test_set = train_test_split(data, shuffle=True, test_size=0.15, train_size=0.85)
     x_train, y_train = train_set['seq_emb'], np.array(train_set['clade'].astype(int))
     x_test, y_test = test_set['seq_emb'], np.array(test_set['clade'].astype(int))
+    # x_val, y_val = data_val['seq_emb'], np.array(data_val['clade'].astype(int))
+    number_test_clades = max(y_test)
+    # number_val_clades = max(y_val)
 
-    global train_len
     train_len = len(x_train)
 
     # convert labels to proper format for training if y =4 than [0,0,0,1,0,0]
@@ -324,6 +279,13 @@ def train(datafile):
         y_temp[index] = temp
     y_test = y_temp
 
+    # y_temp = np.zeros((len(y_val), number_of_clades), dtype=int)
+    # for index in range(len(y_val)):
+    #     temp = y_temp[index]
+    #     temp[y_val[index]-1] = 1
+    #     y_temp[index] = temp
+    # y_val = y_temp
+
     classes = []
     for i in range(1,number_of_clades+1):
         classes.append(i)
@@ -335,13 +297,16 @@ def train(datafile):
     num_classes = len(classes)
     y_train_temp = y_train
 
-    # for x in x_train:
-
     x_train = create_matrices(x_train)
     x_train_temp = x_train
     x_test = create_matrices(x_test)
 
+    # x_val = create_matrices(x_val)
+
     model = None
+    best_model = model
+    best_vectors = None
+    split_len = len(x_train)
 
     best_alpha = 0
     max_micro_aupr = 0
@@ -353,17 +318,15 @@ def train(datafile):
     micro_aupr_mean = []
     acc_mean = []
     f1_mean = []
-    alphas = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
     # start training here
-    for alpha in tqdm(range(0, 5, 1)):
+    for alpha in tqdm(range(0, 10, 1)):
         f_macro_aupr = []
         f_micro_aupr = []
         f_acc = []
         f_f1 = []
 
-        X_train, X_test = build_kernal_matrix(x_train, x_test, 100, alpha/10)
-        # X_train = x_tra
+        X_train, X_test, _ = build_kernal_matrix(x_train, x_test, 100, alpha/10)
         y_labels = y_train
         for seed in range(10):
             macro_aupr = []
@@ -374,87 +337,199 @@ def train(datafile):
             splits = ml_split(y_labels, num_splits=10, seed=seed)
 
             for train, valid in splits:
-                x_train = np.nan_to_num(X_train[train, :][:, train])
+                x_train_now = np.nan_to_num(X_train[train, :][:, train])
                 x_valid = np.nan_to_num(X_train[valid, :][:, train])
 
-                y_train = y_labels[train.astype(int)]
-                y_val = y_labels[valid.astype(int)]
+                y_train_now = y_labels[train.astype(int)]
+                y_valid = y_labels[valid.astype(int)]
 
                 model = RandomForestClassifier()
                 # model = OneVsRestClassifier(svm.SVC(C=c_penalty, kernel='precomputed', random_state=42, probability=True), n_jobs=-1)
-                model.fit(x_train, y_train)
+                model.fit(x_train_now, y_train_now)
 
-                y_score_valid = model.predict_proba(x_valid)
+                # y_score_valid = np.array(model.predict_proba(x_valid))
+                y_score_valid = np.array(model.predict_proba(x_valid))[:,:,1].T
                 y_pred_valid = model.predict(x_valid)
-                y_score_valid = np.array(y_score_valid)
-                result = evaluate_performance(y_val, y_score_valid, np.array(y_pred_valid), 3)
-                # result = evaluate_performance(y_val, np.array(y_pred_valid), 3)
+                result = evaluate_performance(y_valid, y_score_valid, y_pred_valid, alpha)
 
-
-                # micro_aupr.append(result['m-aupr'])
+                micro_aupr.append(result['m-aupr'])
                 macro_aupr.append(result['M-aupr'])
                 f1.append(result['F1'])
                 acc.append(result['acc'])
                 counter += 1
 
-            # f_micro_aupr.append(round(np.mean(micro_aupr), 3))
+            f_micro_aupr.append(round(np.mean(micro_aupr), 3))
             f_macro_aupr.append(round(np.mean(macro_aupr), 3))
             f_f1.append(round(np.mean(f1), 3))
             f_acc.append(round(np.mean(acc), 3))
 
         # choose alpha based on macro-AUPR
-        # micro_aupr_mean.append(round(np.mean(f_micro_aupr), 3))
+        micro_aupr_mean.append(round(np.mean(f_micro_aupr), 3))
         macro_aupr_mean.append(round(np.mean(f_macro_aupr), 3))
         acc_mean.append(round(np.mean(f_acc), 3))
-        f1_mean.append(round(np.mean(f_f1), 3))
-        if max_micro_aupr <= round(np.mean(f_macro_aupr), 3) and max_acc <= round(np.mean(f_acc), 3):
-            max_micro_aupr = round(np.mean(f_macro_aupr), 3)
+        f1_mean.append(round(np.std(f_f1), 3))
+        if max_micro_aupr <= round(np.mean(f_micro_aupr), 3) and max_acc <= round(np.mean(f_acc), 3):
+            max_micro_aupr = round(np.mean(f_micro_aupr), 3)
             max_acc = round(np.mean(f_acc), 3)
             best_alpha = alpha / 10
 
-    # global row
-    # global col
-    # ax1[row, col].plot(alphas, macro_aupr_mean, marker='o')
-    # ax1[row, col].set_title(datafile[:-4])
-    # ax2[row, col].plot(alphas, acc_mean, marker='o')
-    # ax2[row, col].set_title(datafile[:-4])
-    # ax3[row, col].plot(alphas, f1_mean, marker='o')
-    # ax3[row, col].set_title(datafile[:-4])
-    # col += 1
-    # if col == 2:
-    #     row += 1
-    #     col = 0
-    print(micro_aupr_mean)
-    print(macro_aupr_mean)
-    print(acc_mean)
-    print(f1_mean)
-    print(best_alpha)
-
     x_train = x_train_temp
     y_train = y_train_temp
-    x_train, x_test = build_kernal_matrix(x_train, x_test, 100, best_alpha, True)
+    x_train, x_test, vectors = build_kernal_matrix(x_train, x_test, 100, best_alpha, True)
+    best_vectors = vectors
 
+    # _, x_val, _ = build_kernal_matrix(x_train_temp, x_val, 100, best_alpha, True)
 
     model = RandomForestClassifier()
     # model = OneVsRestClassifier(svm.SVC(C=c_penalty, kernel='precomputed', random_state=42, probability=True), n_jobs=-1)
     model.fit(x_train, y_train)
 
-    y_pred = model.predict(x_test)
-    print('f1-score is: ', f1_score(y_test, y_pred, average='micro'))
+    # model = best_model
 
+    y_pred = model.predict(x_test)
+    y_score = np.array(model.predict_proba(x_test))[:,:,1].T
+    # y_score = np.array(model.predict_proba(x_test))
+    print('f1-score is: ', f1_score(y_test, y_pred, average='micro'))
+    cm = confusion_matrix(y_test.argmax(axis=1), y_pred.argmax(axis=1))
+
+    title = ""
+    title2 = ""
+    if len_data == 2 or len_data==1:
+        if datafile[:-4] == "europe_CDR":
+            title = "Europe PspA"
+            title2 = "Europe_PspA"
+        elif datafile[:-4] == "entire_CDR":
+            title = "Published PspA"
+            title2 = "Published_PspA"
+        elif datafile[:-4] == "../published":
+            title = "Published CDR PspA"
+            title2 = "Published_CDR_PspA"
+        elif datafile[:-4] == "../full_length_published":
+            title = "Published Full Length PspA"
+            title2 = "Published_full_length_PspA"
+    else:
+        if datafile[:-4] == "europe_CDR":
+            title = "CDR"
+            title2 = "CDR"
+        elif datafile[:-4] == "alpha_helical":
+            title = "Alpha Helical"
+            title2 = "Alpha_Helical"
+        elif datafile[:-4] == "choline_binding":
+            title = "Choline Binding"
+            title2 = "Choline_Binding"
+        elif datafile[:-4] == "proline_rich":
+            title = "Proline Rich"
+            title2 = "Proline_Rich"
+        elif datafile[:-4] == "full_length_europe":
+            title = "Full length"
+            title2 = "Full_length"
+
+    pickle.dump(model, open("rf_model_" + title2 + ".pkl", "wb"))
+    best_vectors['train_length'] = split_len
+    best_vectors['alpha'] = best_alpha
+    pickle.dump(best_vectors, open("../vectors/rf_vectors_" + title2 + ".txt", "wb"))
+
+    fig2, cfp = plt.subplots()
+    sns.heatmap(cm, annot=True, cmap="Purples", ax=cfp, fmt='d')
+    cfp.set_title(title + ' sequences Confusion Matrix')
+    cfp.set_xlabel('Predicted Clades')
+    cfp.set_ylabel('Actual Clades')
+    cfp.xaxis.set_ticklabels(range(1, number_test_clades + 1))
+    cfp.yaxis.set_ticklabels(range(1, number_test_clades + 1))
+    fig2.show()
+    fig2.savefig('../plots/RF_Covariance_' + title2 + '.png')
+
+    # hollingshed validation
+
+    # y_pred_val = model.predict(x_val)
+    # y_score_val = np.array(model.predict_proba(x_val))[:,:,1].T
+    # # y_score = np.array(model.predict_proba(x_test))
+    # print('f1-score is: ', f1_score(y_val, y_pred_val, average='micro'))
+    # cmh = confusion_matrix(y_val.argmax(axis=1), y_pred_val.argmax(axis=1))
+
+    # fig2, cfp = plt.subplots()
+    # sns.heatmap(cmh, annot=True, cmap="Purples", ax=cfp, fmt='d')
+    # cfp.set_title('Hollingshed sequences Confusion Matrix')
+    # cfp.set_xlabel('Predicted Clades')
+    # cfp.set_ylabel('Actual Clades')
+    # cfp.xaxis.set_ticklabels(range(1, number_val_clades + 1))
+    # cfp.yaxis.set_ticklabels(range(1, number_val_clades + 1))
+    # fig2.show()
+    # fig2.savefig('../plots/RF_Covariance_Hollingshed.png')
+
+    # precision_val = []
+    # recall_val = []
+    # fig1, axes1 = plt.subplots()
+    # fig1.suptitle("RF AUPR Curve Hollingshed Sequences")
+    # for i in range(number_of_clades):
+    #     pr, _, precision_val, recall_val = real_AUPR(y_val[:, i], y_score_val[:, i])
+    #     axes1.plot(recall_val, precision_val, lw=1, label="class {}".format(i + 1)+", {:.1f}".format(round(pr, 3)*100)+" %")
+    #     axes1.set(xlabel='recall', ylabel='precision')
+    #     axes1.legend(loc="best", prop={'size': 7})
+    # # fig1.tight_layout()
+    # # fig1.delaxes(axes1[1])
+    # plt.show()
+    # fig1.savefig('../plots/RF_Hollingshed_AUPR.png')
+
+    precision = []
+    recall = []
+    for i in range(number_of_clades):
+        pr, _, precision, recall = real_AUPR(y_test[:, i], y_score[:, i])
+        if len_data == 1:
+            axes.plot(recall, precision, lw=1, label="class {}".format(i + 1)+", {:.1f}".format(round(pr, 3)*100)+" %")
+        elif len_data == 2:
+            axes[col].plot(recall, precision, lw=1, label="class {}".format(i + 1)+", {:.1f}".format(round(pr, 3)*100)+" %")
+        else:
+            axes[row, col].plot(recall, precision, lw=1, label="class {}".format(i + 1)+", {:.1f}".format(round(pr, 3)*100)+" %")
+
+
+    if len_data == 2:
+        axes[col].set_title(title)
+    elif len_data > 2:
+        axes[row, col].set_title(title)
 
 
 def main():
-    embedding_file = ['protvec/vector_embeddings_europe.txt']#, 'protvec/vector_embeddings_alpha_helical.txt', 'protvec/vector_embeddings_choline_binding.txt', 'protvec/vector_embeddings_proline_rich.txt', 'protvec/vector_embeddings_whole.txt', 'protvec/vector_embeddings_all.txt']
-    data_file = ['europe.csv']#, 'alpha_helical.csv', 'choline_binding.csv', 'proline_rich.csv', 'whole_europe.csv', 'data.csv']
-    # embedding_file = ['protvec/vector_embeddings_europe.txt', 'protvec/vector_embeddings_alpha_helical.txt']
-    # data_file = ['europe.csv', 'alpha_helical.csv']
+    # embedding_file = ['protvec/vector_embeddings_europe.txt', 'protvec/vector_embeddings_alpha_helical.txt', 'protvec/vector_embeddings_choline_binding.txt', 'protvec/vector_embeddings_proline_rich.txt', 'protvec/vector_embeddings_whole.txt']#, 'protvec/vector_embeddings_all.txt']
+    # data_file = ['europe_CDR.csv', 'alpha_helical.csv', 'choline_binding.csv', 'proline_rich.csv', 'full_length_europe.csv']#, 'data_CDR.csv']
+    # embedding_file = ['protvec/vector_embeddings_europe.txt', 'protvec/vector_embeddings_all.txt']
+    # data_file = ['europe_CDR.csv', 'entire_CDR.csv']
+    embedding_file = ['../protvec/vector_embeddings_full_length_published.txt']
+    data_file = ['../full_length_published.csv']
     global len_data
-    len_data = len(data_file)/2
+    len_data = len(data_file)
+    if len_data == 1:
+        fig, axes = plt.subplots()
+        fig.suptitle("RF AUPR Curve Published Full Length Region")
+    elif len_data == 2:
+        fig, axes = plt.subplots(1, 2)
+        fig.suptitle("RF AUPR Curve Published CDR Region")
+    else:
+        fig, axes = plt.subplots(3, 2)
+        fig.suptitle("RF AUPR Curve Europe Sequences")
+    row = 0
+    col = 0
     for i in range(len(data_file)):
         read_embeddings(embedding_file[i])
-        train(data_file[i])
-    # plt.show()
+        train(data_file[i], row, col, axes, fig)
+        col += 1
+        if col % 2 == 0:
+            col = 0
+            row += 1
+    if len_data == 1:
+        axes.set(xlabel='recall', ylabel='precision')
+        axes.legend(loc="best", prop={'size': 7})
+    else:
+        for ax in axes.flat:
+            ax.set(xlabel='recall', ylabel='precision')
+            if len_data == 2:
+                ax.legend(loc="best", prop={'size': 7})
+            else:
+                ax.legend(loc="best", prop={'size': 4})
+    fig.tight_layout()
+    # fig.delaxes(axes[0][1])
+    plt.show()
+    fig.savefig('../plots/RF_Published_Full_Length.png')
 
 
 
